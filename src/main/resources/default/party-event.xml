@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<events>
+    <event>
+        <name>Lagpixel6-Event</name>
+        <startAt>2022-02-01 12:00:00</startAt>
+        <eventAt>2022-02-07 12:00:00</eventAt>
+        <endAt>2022-02-07 12:01:30</endAt>
+
+        <rules>
+            <accessBlockBeforeEventEnd>true</accessBlockBeforeEventEnd>
+            <accessBlockExceptions>
+                <player>
+                    <username>cotusierobimany</username>
+                    <uuid/>
+                </player>
+            </accessBlockExceptions>
+            <kickMessage>Start edycji o 12:00 CET 7 lutego 2022</kickMessage>
+            <startWhenPlayersCount>5</startWhenPlayersCount>
+            <kickOnEnd>false</kickOnEnd>
+        </rules>
+
+        <eventCourse>
+            <animations>
+                <animation>
+                    <name>PlayerFireworks</name>
+                    <options>
+                        <fireworkHeight>4</fireworkHeight>
+                        <fireworkDelay>3</fireworkDelay>
+                        <fireworkMotive>standard</fireworkMotive>
+                    </options>
+                </animation>
+            </animations>
+
+            <actions>
+                <action>
+                    <name>ScreenText</name>
+                    <options>
+                        <text>Szósta edycja Lagpixela rozpoczęta!</text>
+                        <color>aqua</color>
+                    </options>
+                    <lifecycle>
+                        <startAfter>5000</startAfter>
+                        <periodTime>10000</periodTime>
+                    </lifecycle>
+                </action>
+                <action>
+                    <name>AmbientSound</name>
+                    <options>
+                        <sound>EnderDragonAmbient</sound>
+                    </options>
+                    <lifecycle>
+                        <startAfter>500</startAfter>
+                    </lifecycle>
+                </action>
+            </actions>
+        </eventCourse>
+    </event>
+</events>

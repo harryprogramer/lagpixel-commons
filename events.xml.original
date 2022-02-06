@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<parties>
+  <isEventsEnabled>false</isEventsEnabled>
+  <events>
+    <event>
+      <name>Lagpixel6-Event</name>
+      <startAt>2022-02-01T12:00:00</startAt>
+      <eventAt>2022-02-07T12:00:00</eventAt>
+      <endAt>2022-02-07T12:01:15</endAt>
+      <rules>
+        <accessBlockBeforeEventEnd>true</accessBlockBeforeEventEnd>
+        <accessBlockExceptions>
+          <player>
+            <username>cotusierobimany</username>
+          </player>
+        </accessBlockExceptions>
+        <kickMessage>Start edycji o 12:00 CET 7 lutego 2022</kickMessage>
+        <startWhenPlayersCount>5</startWhenPlayersCount>
+        <kickOnEnd>false</kickOnEnd>
+      </rules>
+      <eventCourse>
+        <animations>
+          <animation>
+            <name>PlayerFireworks</name>
+            <options>
+              <setting option="fireworkHeight" value="4"/>
+              <setting option="fireworkDelay" value="3"/>
+              <setting option="fireworkMotive" value="standard"/>
+            </options>
+            <lifecycle>
+              <startAfter>2000</startAfter>
+              <periodTime>0</periodTime>
+            </lifecycle>
+          </animation>
+        </animations>
+
+        <actions>
+          <action>
+            <name>ScreenText</name>
+            <options>
+              <setting option="text" value="Szósta edycja Lagpixela rozpoczęta!"/>
+              <setting option="color" value="aqua"/>
+            </options>
+            <lifecycle>
+              <startAfter>500</startAfter>
+              <periodTime>10000</periodTime>
+            </lifecycle>
+          </action>
+          <action>
+            <name>AmbientSound</name>
+            <options>
+              <setting option="sound" value="EnderDragonAmbient"/>
+            </options>
+            <lifecycle>
+              <startAfter>500</startAfter>
+              <periodTime>1500</periodTime>
+            </lifecycle>
+          </action>
+        </actions>
+      </eventCourse>
+    </event>
+  </events>
+</parties>

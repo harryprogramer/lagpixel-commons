@@ -1,0 +1,8 @@
+name: Lagpixel
+version: '${project.version}'
+main: lgpxl.servercommons.Lagpixel
+api-version: 1.18
+authors: [ many, pgts ]
+description: Commons for Lagpixel Server
+website: https://lagpixel.pl
+
