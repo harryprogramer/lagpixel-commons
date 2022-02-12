@@ -78,6 +78,11 @@ class PartyPartyManagerTest implements ContextProvider {
 
     }
 
+    @Test
+    void test(){
+        System.out.println(Runtime.getRuntime().availableProcessors());
+    }
+
     @Override
     public EventManager getEventManager() {
         return null;

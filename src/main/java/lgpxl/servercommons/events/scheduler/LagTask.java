@@ -11,6 +11,9 @@ public class LagTask implements Runnable {
     private final int taskId;
 
     public LagTask(Runnable r){
+
+        //System.out.println("LagTask this " + this + " remote " + r);
+
         if(r == null) throw new NullPointerException();
 
         this.runnable = r;

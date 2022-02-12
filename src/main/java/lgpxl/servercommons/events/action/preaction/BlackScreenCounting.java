@@ -1,19 +1,15 @@
 package lgpxl.servercommons.events.action.preaction;
 
-import com.fasterxml.jackson.databind.util.Named;
 import lgpxl.servercommons.ContextProvider;
 import lgpxl.servercommons.events.config.Event;
 import lgpxl.servercommons.events.config.EventLifecycle;
 import lgpxl.servercommons.events.processor.EventProcessorManager;
 import lgpxl.servercommons.events.scheduler.LagTask;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.TextComponent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.title.Title;
-import org.bukkit.Bukkit;
-import org.bukkit.Location;
-import org.bukkit.Material;
+import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -22,6 +18,7 @@ import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 import org.jetbrains.annotations.NotNull;
@@ -36,7 +33,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 public class BlackScreenCounting extends AbstractPreAction implements Listener {
-    private HashMap<String, Location> previousLocations = new HashMap<>();
+    private HashMap<String, Location> previousLocation = new HashMap<>();
+    private HashMap<String, GameMode> previousGamemode = new HashMap<>();
+    private ContextProvider provider;
 
     private final static NamedTextColor[] textColors = new NamedTextColor[]{
             NamedTextColor.RED,
@@ -65,24 +64,50 @@ public class BlackScreenCounting extends AbstractPreAction implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onPlayerJoin(@NotNull PlayerJoinEvent event) {
-        previousLocations.put(event.getPlayer().getName(), event.getPlayer().getLocation());
+        previousLocation.put(event.getPlayer().getName(), event.getPlayer().getLocation());
+        previousGamemode.put(event.getPlayer().getName(), event.getPlayer().getGameMode());
         event.getPlayer().teleport(new Location(Bukkit.getWorld("world"), 0.5, 256, 0.5));
+        for(Player playerToShow : provider.getPlugin().getServer().getOnlinePlayers()) {
+            event.getPlayer().hidePlayer(provider.getPlugin(), playerToShow);
+        }
+        event.getPlayer().setGameMode(GameMode.ADVENTURE);
     }
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onPlayerMove(@NotNull PlayerMoveEvent event) {
-        event.setTo(event.getFrom());
+        Location location = event.getFrom();
+        location.setX(0.5);
+        location.setY(256);
+        location.setX(0.5);
+        event.setTo(location);
+    }
+
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onPlayerQuit(@NotNull PlayerQuitEvent event) {
+        try {
+            restorePlayerLastState(event.getPlayer(), provider);
+        }catch (Exception e){
+            provider.getLogger().warning("Cannot restore last player state after event: " + e.getMessage());
+        }
     }
 
     @Override
-    public void onAction(ContextProvider server, EventProcessorManager processorManager, Event event, EventLifecycle lifecycle, Map<String, String> options) {
+    public synchronized void onAction(ContextProvider server, EventProcessorManager processorManager, Event event, EventLifecycle lifecycle, Map<String, String> options) {
+        if(!server.getPlugin().isEnabled()){
+            return;
+        }
+
+        server.getPlugin().getServer().getScheduler().runTask(server.getPlugin(), () -> Objects.requireNonNull(Bukkit.getWorld("world")).setTime(1000));
+
+        this.provider = server;
+
         server.getPlugin().getServer().getPluginManager().registerEvents(this, server.getPlugin());
 
         Logger logger = server.getLogger();
 
-        logger.info("Starting PreAction [BlackScreenCounting]");
 
-        previousLocations = new HashMap<>();
+        previousLocation = new HashMap<>();
+        previousGamemode = new HashMap<>();
         processorManager.setKickRule(false);
         try {
             buildBlackBox(server.getPlugin());
@@ -92,7 +117,12 @@ public class BlackScreenCounting extends AbstractPreAction implements Listener {
         }
         if(!server.getPlugin().getServer().getOnlinePlayers().isEmpty()) {
             for (Player player : server.getPlugin().getServer().getOnlinePlayers()) {
-                previousLocations.put(player.getName(), player.getLocation());
+                previousLocation.put(player.getName(), player.getLocation());
+                previousGamemode.put(player.getName(), player.getGameMode());
+                for(Player playerToShow : server.getPlugin().getServer().getOnlinePlayers()) {
+                    player.hidePlayer(server.getPlugin(), playerToShow);
+                }
+                server.getPlugin().getServer().getScheduler().runTask(server.getPlugin(), () -> player.setGameMode(GameMode.ADVENTURE));
                 server.getPlugin().getServer().getScheduler().runTask(server.getPlugin(), () -> player.teleport(new Location(Bukkit.getWorld("world"), 0.5, 256, 0.5)));
             }
         }else {
@@ -108,6 +138,7 @@ public class BlackScreenCounting extends AbstractPreAction implements Listener {
                     final Component mainTitle = Component.text(String.valueOf(seconds - finalI), textColors[((seconds - finalI) % textColors.length)]);
                     final Title title = Title.title(mainTitle, mainTitle);
                     for (Player player : server.getPlugin().getServer().getOnlinePlayers()) {
+                        player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1f);
                         player.showTitle(title);
                     }
                 }
@@ -117,34 +148,25 @@ public class BlackScreenCounting extends AbstractPreAction implements Listener {
 
         server.getScheduler().schedule(new LagTask(() -> {
             for(Player player : server.getPlugin().getServer().getOnlinePlayers()){
-                System.out.println("tak takt ktaks");
-                final Component mainTitle = Component.text(options.get("finishText")).color(TextColor.color(0xFFD54B));
-                final Title.Times times = Title.Times.of(Duration.ofMillis(500), Duration.ofMillis(lifecycle.getPeriodTime()), Duration.ofMillis(2000));
-                final Title title = Title.title(mainTitle, Component.empty(), times);
+                if(!server.getPlugin().getServer().getOnlinePlayers().isEmpty()) {
+                    final Component mainTitle = Component.text(options.get("finishText")).color(TextColor.color(0xFFD54B));
+                    final Title.Times times = Title.Times.of(Duration.ofMillis(500), Duration.ofMillis(lifecycle.getPeriodTime()), Duration.ofMillis(2000));
+                    final Title title = Title.title(mainTitle, Component.empty(), times);
 
-                player.showTitle(title);
+                    server.getPlugin().getServer().getScheduler().runTask(server.getPlugin(), () -> player.showTitle(title));
+                }
             }
         }), ChronoUnit.MILLIS.between(LocalDateTime.now(), event.getEventTime()),
                 TimeUnit.MILLISECONDS);
 
         LagTask task = new LagTask(() -> {
             logger.info("Starting escape for PreAction [BlackScreenCounting].");
+
             for(Player player : server.getPlugin().getServer().getOnlinePlayers()){
                 try {
-                    Location previousLocation = previousLocations.get(player.getName());
-                    if (previousLocation != null) {
-                        logger.info("Teleporting player [" + player.getName() + "] to location: " + previousLocation);
-                        server.getPlugin().getServer().getScheduler().runTask(server.getPlugin(), () -> player.teleport(previousLocation));
-                    } else {
-                        logger.warning("Cannot find previous location for [" + player.getName() + "], teleporting to 0, 0, 0");
-                        Block y = Objects.requireNonNull(Bukkit.getWorld("world")).getHighestBlockAt(0, 0);
-                        Location newLocation = new Location(Bukkit.getWorld("world"), 0, y.getY(), 0);
-                        logger.info("Teleporting player [" + player.getName() + "] to location: " + newLocation);
-                        server.getPlugin().getServer().getScheduler().runTask(server.getPlugin(), () -> player.teleport(newLocation));
-                    }
-                }catch (Throwable e){
-                    logger.warning("Cannot teleport player to previous positions due: " + e.getMessage());
-                    e.printStackTrace();
+                    restorePlayerLastState(player, server);
+                }catch (Exception e){
+                     logger.warning("Cannot restore last player state after event: " + e.getMessage());
                 }
             }
 
@@ -160,6 +182,38 @@ public class BlackScreenCounting extends AbstractPreAction implements Listener {
 
         logger.info("Scheduling PreAction [BlackScreenCounting] escape with task id: " + task.getTaskID());
         server.getScheduler().schedule(task, ChronoUnit.MILLIS.between(LocalDateTime.now(), event.getEventTime()), TimeUnit.MILLISECONDS);
+    }
+
+    private void restorePlayerLastState(Player player, ContextProvider server){
+        Logger logger = server.getLogger();
+
+        Location location = previousLocation.get(player.getName());
+        GameMode gameMode = previousGamemode.get(player.getName());
+        for(Player playerToShow : server.getPlugin().getServer().getOnlinePlayers()) {
+            player.showPlayer(server.getPlugin(), playerToShow);
+        }
+
+        if(gameMode != null) {
+            server.getPlugin().getServer().getScheduler().runTask(server.getPlugin(), () -> player.setGameMode(gameMode));
+        }else{
+            logger.warning("Unknown previous GameMode for player [" + player.getName() + "], setting default.");
+        }
+
+        if(location != null) {
+            try {
+                logger.info("Teleporting player [" + player.getName() + "] to location: " + location);
+                server.getPlugin().getServer().getScheduler().runTask(server.getPlugin(), () -> player.teleport(location));
+            } catch (Throwable e) {
+                logger.warning("Cannot teleport player to previous positions due: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }else {
+            logger.warning("Cannot find previous location for [" + player.getName() + "], teleporting to 0, 0, 0");
+            Block y = Objects.requireNonNull(Bukkit.getWorld("world")).getHighestBlockAt(0, 0);
+            Location newLocation = new Location(Bukkit.getWorld("world"), 0, y.getY(), 0);
+            logger.info("Teleporting player [" + player.getName() + "] to location: " + newLocation);
+            server.getPlugin().getServer().getScheduler().runTask(server.getPlugin(), () -> player.teleport(newLocation));
+        }
     }
 
     private static void buildBlackBox(JavaPlugin plugin){

@@ -19,6 +19,7 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.inventory.meta.FireworkMeta;
 
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.logging.Logger;
 
@@ -27,12 +28,13 @@ public class FireworksAnimation implements Animation, Listener {
 
     @Override
     public void runAnimation(ContextProvider server, EventLifecycle lifecycle, Map<String, String> options) {
-        long startWaitingTime = System.currentTimeMillis();
-        while (!server.getPlugin().getServer().getPluginManager().isPluginEnabled(Lagpixel.NAME)
-                && !((System.currentTimeMillis() - startWaitingTime) / 1000.0 < 5000))
-            Thread.onSpinWait();
-
         Logger logger = server.getLogger();
+        logger.info("Start animation fireworks");
+        if(!server.getPlugin().isEnabled()){
+            logger.warning("Cannot run animation [Firework] because plugin is disabled");
+            return;
+        }
+
 
         if(!server.getPlugin().getServer().getPluginManager().isPluginEnabled(Lagpixel.NAME)){
             logger.warning("Plugin has not been activated at the given time, stopping animation [Firework]");
@@ -40,8 +42,6 @@ public class FireworksAnimation implements Animation, Listener {
         }
 
         long startTime = System.currentTimeMillis();
-
-        logger.info("Starting [Firework] animation with period: " + lifecycle.getPeriodTime());
 
         boolean isError = false;
 
@@ -53,12 +53,13 @@ public class FireworksAnimation implements Animation, Listener {
                break;
             }
             for (Player player : server.getPlugin().getServer().getOnlinePlayers()) {
-                logger.info("Spawning firework for player: [" + player.getName() + "] at " + player.getLocation());
                 if(server.getPlugin().getServer().getPluginManager().isPluginEnabled(Lagpixel.NAME)) {
                     try {
-                        Location location = player.getLocation();
-                        location.setY(location.getBlockY() + 1.5);
-                        server.getPlugin().getServer().getScheduler().runTask(server.getPlugin(), () -> spawnFireworks(location));
+                        for(int i = 0; i < 30; i++){
+                            server.getPlugin().getServer().getScheduler().runTask(server.getPlugin(), () -> {
+                                spawnFireworks(generateRandomLocation(player));
+                            });
+                        }
                     } catch (Throwable e) {
                         isError = true;
                         e.printStackTrace();
@@ -82,16 +83,54 @@ public class FireworksAnimation implements Animation, Listener {
 
     }
 
+    private static Location generateRandomLocation(Player player){
+        Location previousLocation = player.getLocation();
+        double x = ThreadLocalRandom.current().nextDouble(previousLocation.getBlockX() - 150, previousLocation.getBlockX() + 150);
+        double z = ThreadLocalRandom.current().nextDouble(previousLocation.getBlockZ() - 150, previousLocation.getBlockZ() + 150);
+        double y = previousLocation.getWorld().getHighestBlockYAt((int) x, (int) z) + 25;
+
+        return new Location(previousLocation.getWorld(), x, y, z);
+    }
+
     public static void spawnFireworks(Location location){
         Color color = colors[ThreadLocalRandom.current().nextInt(0, colors.length - 1)];
         Firework fw = location.getWorld().spawn(location, Firework.class);
         FireworkMeta fwm = fw.getFireworkMeta();
 
-        fwm.setPower(2);
-        fwm.addEffect(FireworkEffect.builder().withColor(color).flicker(true).build());
+        final Random random = new Random();
+        final FireworkEffect effect = FireworkEffect.builder().flicker(random.nextBoolean()).
+                withColor(getColor(random.nextInt(17) + 1))
+                .withFade(getColor(random.nextInt(17) + 1))
+                .with(FireworkEffect.Type.values()[random.nextInt(FireworkEffect.Type.values().length)]).
+                trail(random.nextBoolean()).build();
 
+        fwm.setPower(1);
+        fwm.addEffect(effect);
         fw.setFireworkMeta(fwm);
         fw.detonate();
+    }
+
+    private static Color getColor(final int i) {
+        return switch (i) {
+            case 1 -> Color.AQUA;
+            case 2 -> Color.BLACK;
+            case 3 -> Color.BLUE;
+            case 4 -> Color.FUCHSIA;
+            case 5 -> Color.GRAY;
+            case 6 -> Color.GREEN;
+            case 7 -> Color.LIME;
+            case 8 -> Color.MAROON;
+            case 9 -> Color.NAVY;
+            case 10 -> Color.OLIVE;
+            case 11 -> Color.ORANGE;
+            case 12 -> Color.PURPLE;
+            case 13 -> Color.RED;
+            case 14 -> Color.SILVER;
+            case 15 -> Color.TEAL;
+            case 16 -> Color.WHITE;
+            case 17 -> Color.YELLOW;
+            default -> null;
+        };
     }
 
     @EventHandler

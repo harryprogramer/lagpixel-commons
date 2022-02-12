@@ -8,6 +8,7 @@ import lgpxl.servercommons.events.config.*;
 import lgpxl.servercommons.events.config.parser.builder.EventConfigGenerator;
 import lgpxl.servercommons.events.scheduler.LagTask;
 import lgpxl.servercommons.events.scheduler.Scheduler;
+import lgpxl.servercommons.events.scheduler.ThreadFactory;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextComponent;
 import net.kyori.adventure.text.format.TextColor;
@@ -21,12 +22,15 @@ import org.jetbrains.annotations.NotNull;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
 
 public class SimpleEventProcessor implements EventProcessor, Listener, EventProcessorManager {
+    public final ExecutorService asyncTaskExecutor = new ThreadPoolExecutor(0,
+            50, 60L, TimeUnit.SECONDS,
+            new LinkedBlockingDeque<>(), ThreadFactory.INSTANCE);
+
     private final List<String> canceledEvents = Collections.synchronizedList(new ArrayList<>());
     private final Map<String, Animation> animations = new ConcurrentHashMap<>();
     private final Map<String, Action> actions = new ConcurrentHashMap<>();
@@ -46,12 +50,10 @@ public class SimpleEventProcessor implements EventProcessor, Listener, EventProc
     public SimpleEventProcessor(ContextProvider plugin) {
         this.context = plugin;
         this.scheduler = plugin.getScheduler();
+
         this.logger = plugin.getLogger();
-        if(plugin.getPlugin() != null) {
-            plugin.getPlugin().getServer().getPluginManager().registerEvents(this, plugin.getPlugin());
-        }else {
-            logger.info("Missing plugin object detected, this attempt to fire will be treated as local with no real server.");
-        }
+        logger.info("scheduler " + this.scheduler);
+        plugin.getPlugin().getServer().getPluginManager().registerEvents(this, plugin.getPlugin());
     }
 
 
@@ -77,7 +79,9 @@ public class SimpleEventProcessor implements EventProcessor, Listener, EventProc
         public void run() {
             Action action = actions.get(this.action.getName());
             if(action != null) {
-                action.runAction(context, this.action.getLifecycle(), this.action.getOptions());
+                logger.info("Starting Action [" + action.getClass().getName() + " now.");
+                asyncTaskExecutor.submit(new LagTask(() -> action.runAction(context, this.action.getLifecycle(), this.action.getOptions())));
+
             }else {
                 logger.warning("Action " + this.action.getName() + " will be skipped due [name error]: cannot find action");
             }
@@ -98,10 +102,19 @@ public class SimpleEventProcessor implements EventProcessor, Listener, EventProc
         @Override
         public void run() {
             PreAction action = preActions.get(this.action.getName());
+
             if(action != null) {
-                action.runAction(context, processorManager, event,this.action.getLifecycle(), this.action.getOptions());
+                scheduler.executeAsync(new LagTask(() ->
+                        action.runAction(context, processorManager,
+                                event,this.action.getLifecycle(), this.action.getOptions())));
             }else {
-                logger.warning("Action " + this.action.getName() + " will be skipped due [name error]: cannot find action");
+                Action actionNormal = actions.get(this.action.getName());
+                if(actionNormal != null){
+                    logger.info("Starting PreAction [" + actionNormal.getClass().getName() + "] now.");
+                    scheduler.executeAsync(new LagTask(() -> actionNormal.runAction(context, this.action.getLifecycle(), this.action.getOptions())));
+                }else {
+                    logger.warning("Action " + this.action.getName() + " will be skipped due [name error]: cannot find action");
+                }
             }
         }
     }
@@ -126,7 +139,10 @@ public class SimpleEventProcessor implements EventProcessor, Listener, EventProc
                         delay);
             }
             if(animation != null){
-                animation.runAnimation(context, lifecycle, this.animation.getOptions());
+                EventLifecycle finalLifecycle = lifecycle;
+                logger.info("Starting animation [" + animation.getClass().getName() + "] now.");
+                scheduler.executeAsync(new LagTask(() -> animation.runAnimation(context, finalLifecycle, this.animation.getOptions())));
+                logger.info("End async animation [" + animation.getClass().getName() + "] now.");
             }else {
                 logger.warning("PreAction " + this.animation.getName() + " will be skipped due name error: [cannot find action]");
             }
@@ -139,28 +155,41 @@ public class SimpleEventProcessor implements EventProcessor, Listener, EventProc
 
         public EventCourseTask(Event event){
             this.event = event;
+            /*
+            StackTraceElement[] traceElements = Thread.currentThread().getStackTrace();
+            logger.info("========================================= " + this);
+            for(StackTraceElement traceElement : traceElements){
+                logger.info(traceElement.toString());
+            }
+            logger.info("=========================================");
+            */
         }
 
         @Override
         public void run() {
+            logger.info("Course for event [" + event.getName() + "] started." + this);
+
             isKickPlayers = false;
+
             kickMessage = null;
 
             for(EventAnimation eventAnimation : event.getEventLifecycle().getAnimations()){
                 LagTask lagTask = new LagTask(new EventAnimationTask(eventAnimation));
-                logger.info("Scheduling work for animation [" + eventAnimation.getName() + "] to event [" + event.getName() + "] with id: " + lagTask.getTaskID());
+                logger.info("Scheduling work for animation [" + eventAnimation.getName() + "] " +
+                        "to event [" + event.getName() + "] with id: " + lagTask.getTaskID() + ", delay: " + eventAnimation.getLifecycle().getTimeAfterStart());
                 scheduler.schedule(lagTask,
                         eventAnimation.getLifecycle().getTimeAfterStart(), TimeUnit.MILLISECONDS);
             }
 
             for (EventAction eventAction : event.getEventLifecycle().getActions()){
                 LagTask lagTask = new LagTask(new EventActionTask(eventAction));
-                logger.info("Scheduling work for action [" + eventAction.getName() + "] to event [" + event.getName() + "] with id: " + lagTask.getTaskID());
-                scheduler.schedule(new LagTask(new EventActionTask(eventAction)),
-                        eventAction.getLifecycle().getTimeAfterStart(), TimeUnit.MILLISECONDS);
+                logger.info("Scheduling work for action [" + eventAction.getName() + "] " +
+                        "to event [" + event.getName() + "] with id: " + lagTask.getTaskID() + ", delay: " + eventAction.getLifecycle().getTimeAfterStart());
+                scheduler.schedule(lagTask, eventAction.getLifecycle().getTimeAfterStart(), TimeUnit.MILLISECONDS);
             }
         }
     }
+
 
     private void schedulePreActions(Event event, long delay){
         for(EventAction action : event.getEventPreAction().getPreActions()){
@@ -171,6 +200,14 @@ public class SimpleEventProcessor implements EventProcessor, Listener, EventProc
                 logger.warning("Action [" + action.getName() + "] will not be pre-performed because the time to the event is shorter than the pre-action time");
             }
         }
+    }
+
+    private void scheduleCleanUp(@NotNull Event event){
+        scheduler.schedule(new LagTask(() -> {
+            isKickPlayers = false;
+            kickMessage = null;
+            currentRunningEvent.set(null);
+        }), ChronoUnit.MILLIS.between(LocalDateTime.now(), event.getEndTime()), TimeUnit.MILLISECONDS);
     }
 
 
@@ -194,9 +231,10 @@ public class SimpleEventProcessor implements EventProcessor, Listener, EventProc
             delay = 0;
         }
         LagTask task = new LagTask(new EventCourseTask(event));
-        logger.info("Scheduling course for event [" + event.getName() + "] with id: " + task.getTaskID());
+        logger.info("Scheduling course for event [" + event.getName() + "] with id: " + task.getTaskID() + " and delay: " + delay);
         schedulePreActions(event, delay);
         scheduler.schedule(task, delay, TimeUnit.MILLISECONDS);
+        scheduleCleanUp(event);
     }
 
     @EventHandler(priority = EventPriority.HIGH)

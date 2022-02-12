@@ -4,6 +4,7 @@ import lgpxl.servercommons.events.EventManager;
 import lgpxl.servercommons.events.action.AmbientSoundAction;
 import lgpxl.servercommons.events.action.ScreenTextAction;
 import lgpxl.servercommons.events.action.preaction.BlackScreenCounting;
+import lgpxl.servercommons.events.animation.DayNightAnimation;
 import lgpxl.servercommons.events.animation.FireworksAnimation;
 import lgpxl.servercommons.events.scheduler.LagTask;
 import lgpxl.servercommons.events.scheduler.LagTaskScheduler;
@@ -73,6 +74,7 @@ public final class Lagpixel extends JavaPlugin implements ContextProvider {
         eventManager.addAction("AmbientSound", new AmbientSoundAction());
         eventManager.addPreAction("BlackScreenCounting", new BlackScreenCounting());
         eventManager.addAnimation("PlayerFireworks", new FireworksAnimation());
+        eventManager.addAnimation("DayNightCycle", new DayNightAnimation());
     }
 
     public void startScheduledWork() {
